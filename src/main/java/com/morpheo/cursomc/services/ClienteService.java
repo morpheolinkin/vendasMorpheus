@@ -14,7 +14,9 @@ import com.morpheo.cursomc.services.exceptions.ObjectNotFoundException;
 import com.morpheo.cursomc.dao.repository.ClienteRepository;
 import com.morpheo.cursomc.dao.repository.EnderecoRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Example;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -22,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.awt.image.BufferedImage;
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
@@ -32,7 +35,7 @@ import static org.springframework.data.domain.Sort.Direction.valueOf;
 public class ClienteService {
 
     @Autowired
-    private ClienteRepository repository;
+    private ClienteRepository cliRepository;
 
     @Autowired
     private EnderecoRepository enderecoRepository;
@@ -43,6 +46,12 @@ public class ClienteService {
     @Autowired
     private S3Service s3Service;
 
+    @Autowired
+    private ImageService imageService;
+
+    @Value("${img.prefix.client.profile}")
+    private String prefix;
+
     //========================================================================================================================
     public Cliente find(Integer id) {
         UserSS userSS = UserService.authenticated();
@@ -50,20 +59,20 @@ public class ClienteService {
             throw new AuthorizationException("Acesso negado");
         }
 
-        Optional<Cliente> repositoryById = repository.findById(id);
+        Optional<Cliente> repositoryById = cliRepository.findById(id);
         return repositoryById.orElseThrow(() -> new ObjectNotFoundException(
                 "Objeto não encontrado! ID" + id + ", tipo: " + Cliente.class.getName()));
 
     }
 
     public List<Cliente> findAll() {
-        return repository.findAll();
+        return cliRepository.findAll();
     }
 
     public Page<Cliente> findPage(Integer page, Integer linesPerPage, String direction, String orderBy) {
         PageRequest pageRequest = PageRequest.of(page, linesPerPage, valueOf(direction), orderBy);
 
-        return repository.findAll(pageRequest);
+        return cliRepository.findAll(pageRequest);
     }
 
     //========================================================================================================================
@@ -71,7 +80,7 @@ public class ClienteService {
     @Transactional
     public Cliente insert(Cliente cliente) {
         cliente.setId(null);
-        cliente = repository.save(cliente);
+        cliente = cliRepository.save(cliente);
         enderecoRepository.saveAll(cliente.getEnderecos());
         return cliente;
     }
@@ -81,7 +90,7 @@ public class ClienteService {
     public Cliente update(Cliente cliente) {
         Cliente newOblj = find(cliente.getId());
         updateData(newOblj, cliente);
-        return repository.save(newOblj);
+        return cliRepository.save(newOblj);
     }
 
     //========================================================================================================================
@@ -94,7 +103,7 @@ public class ClienteService {
     public void delete(Integer id) {
         find(id);
         try {
-            repository.deleteById(id);
+            cliRepository.deleteById(id);
         } catch (DataIntegrityViolationException e) {
             throw new DataIntegrityException(
                     "Não é possível excluir porque há entidades relacionadas");
@@ -142,6 +151,13 @@ public class ClienteService {
     }
 
     public URI uploadProfilePicture(MultipartFile multipartFile){
-        return s3Service.uploadFile(multipartFile);
+        UserSS user = UserService.authenticated();
+        if (user == null)
+            throw new AuthorizationException("Acesso negado");
+
+        BufferedImage jpgImage = imageService.getJpgImageFromFile(multipartFile);
+        String fileName = prefix + user.getId() + ".jpg";
+
+        return s3Service.uploadFile(imageService.getInputStream(jpgImage, "jpg"), fileName, "image");
     }
 }

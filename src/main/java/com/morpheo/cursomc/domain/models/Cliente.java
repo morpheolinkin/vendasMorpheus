@@ -145,7 +145,6 @@ public class Cliente implements Serializable {
     public void setSenha(String senha) {
         this.senha = senha;
     }
-
     /**
      * Método que irá retornar os perfis do usuário
      * percorrendo através {@code Stream} e buscando o tipo enumerado do perfil.
